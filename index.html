@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yatzy</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --surface: #ffffff;
+    --ink: #1f2328;
+    --muted: #6b6f76;
+    --line: #e2ddd2;
+    --accent: #1f6f5c;
+    --accent-ink: #ffffff;
+    --hold: #e8a33d;
+    --preview: #1f6f5c;
+    --die: #fffdf8;
+    --pip: #1f2328;
+    --row-alt: #faf8f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181c;
+      --surface: #1e2227;
+      --ink: #e8e6e1;
+      --muted: #9aa0a6;
+      --line: #2e343b;
+      --accent: #3fb394;
+      --accent-ink: #0d1512;
+      --hold: #f0b353;
+      --preview: #5fd0b0;
+      --die: #f3efe6;
+      --pip: #1f2328;
+      --row-alt: #22272d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { margin: 0; font-size: 1.9rem; letter-spacing: 0.02em; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  header p { margin: 0; color: var(--muted); }
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); padding: 8px 14px;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+
+  /* Setup */
+  #setup .count { display: flex; gap: 8px; margin: 10px 0 16px; }
+  #setup .count button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  #setup .names { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px; }
+  #setup input {
+    width: 100%; font: inherit; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  .rules { color: var(--muted); font-size: 0.92rem; margin-top: 16px; }
+  .rules summary { cursor: pointer; color: var(--ink); }
+
+  /* Game */
+  .layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 820px) { .layout { grid-template-columns: 370px 1fr; align-items: start; } }
+  .turn { font-size: 1.15rem; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 14px; font-size: 0.92rem; }
+  .dice { display: flex; gap: 10px; justify-content: center; margin: 8px 0 14px; flex-wrap: wrap; }
+  .die {
+    width: 54px; height: 54px; padding: 7px; border-radius: 11px; background: var(--die);
+    border: 2px solid #d7d1c4; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    box-shadow: 0 2px 0 rgba(0,0,0,0.12); position: relative; transition: transform .15s;
+  }
+  .die span { width: 9px; height: 9px; border-radius: 50%; background: var(--pip); place-self: center; visibility: hidden; }
+  .die span.on { visibility: visible; }
+  .die.blank span { visibility: hidden; }
+  .die.held { border-color: var(--hold); box-shadow: 0 0 0 3px var(--hold); transform: translateY(-4px); }
+  .die.held::after {
+    content: "HELD"; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+    font-size: 0.65rem; font-weight: 700; color: var(--hold); letter-spacing: 0.08em;
+  }
+  .die.roll { animation: shake .35s ease; }
+  @keyframes shake {
+    0% { transform: rotate(0); } 25% { transform: rotate(-14deg) scale(.94); }
+    50% { transform: rotate(10deg); } 75% { transform: rotate(-6deg); } 100% { transform: rotate(0); }
+  }
+  .controls { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+  .controls .primary { min-width: 150px; padding: 10px 18px; }
+  .hint { text-align: center; color: var(--muted); font-size: 0.85rem; margin: 12px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  .table-wrap { overflow-x: auto; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+  thead th.active { color: var(--accent); }
+  tbody tr:nth-child(even) td { background: var(--row-alt); }
+  td.cat small { color: var(--muted); display: block; font-size: 0.75rem; }
+  td.active { background: color-mix(in srgb, var(--accent) 8%, transparent) !important; }
+  td.pick { cursor: pointer; color: var(--preview); font-style: italic; font-weight: 600; }
+  td.pick:hover { background: color-mix(in srgb, var(--accent) 22%, transparent) !important; }
+  td.pick.zero { color: var(--muted); font-weight: 400; }
+  td.filled { font-weight: 600; }
+  tr.sum td { font-weight: 700; background: transparent !important; }
+  tr.total td { font-size: 1.05rem; font-weight: 800; border-top: 2px solid var(--ink); background: transparent !important; }
+
+  /* End */
+  #end h2 { margin-top: 0; }
+  #end ol { padding-left: 20px; }
+  #end li { margin: 4px 0; font-size: 1.05rem; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎲 Yatzy</h1>
+    <p>Five dice, three rolls, fifteen boxes.</p>
+  </header>
+
+  <!-- Setup screen -->
+  <section id="setup" class="card">
+    <strong>Number of players</strong>
+    <div class="count" id="countBtns"></div>
+    <div class="names" id="nameInputs"></div>
+    <button class="primary" id="startBtn">Start game</button>
+    <details class="rules">
+      <summary>How to play</summary>
+      <p>On your turn, roll up to 3 times. Between rolls, click a die to hold it. Then pick one empty box on your scorecard to score (you can take 0).</p>
+      <p><b>Ones–Sixes:</b> sum of that number · <b>Bonus:</b> 50 if upper section ≥ 63 ·
+      <b>One Pair / Two Pairs / Three / Four of a Kind:</b> sum of the matching dice ·
+      <b>Small Straight</b> 1-2-3-4-5 = 15 · <b>Large Straight</b> 2-3-4-5-6 = 20 ·
+      <b>Full House</b> 3 + 2 = sum of all dice · <b>Chance</b> = sum of all dice · <b>Yatzy</b> 5 of a kind = 50.</p>
+    </details>
+  </section>
+
+  <!-- Game screen -->
+  <section id="game" class="hidden">
+    <div class="layout">
+      <div class="card">
+        <p class="turn" id="turnLabel"></p>
+        <p class="sub" id="subLabel"></p>
+        <div class="dice" id="dice"></div>
+        <div class="controls">
+          <button class="primary" id="rollBtn">Roll</button>
+        </div>
+        <p class="hint" id="hint"></p>
+      </div>
+      <div class="card table-wrap">
+        <table id="scoreTable"></table>
+      </div>
+    </div>
+    <div style="text-align:right;margin-top:12px">
+      <button id="quitBtn">New game</button>
+    </div>
+  </section>
+
+  <!-- End screen -->
+  <section id="end" class="card hidden">
+    <h2 id="winnerLabel"></h2>
+    <ol id="ranking"></ol>
+    <button class="primary" id="againBtn">Play again</button>
+  </section>
+</div>
+
+<script>
+const CATS = [
+  { id: "ones",   name: "Ones",            upper: 1 },
+  { id: "twos",   name: "Twos",            upper: 2 },
+  { id: "threes", name: "Threes",          upper: 3 },
+  { id: "fours",  name: "Fours",           upper: 4 },
+  { id: "fives",  name: "Fives",           upper: 5 },
+  { id: "sixes",  name: "Sixes",           upper: 6 },
+  { id: "pair",   name: "One Pair" },
+  { id: "twoPairs", name: "Two Pairs" },
+  { id: "three",  name: "Three of a Kind" },
+  { id: "four",   name: "Four of a Kind" },
+  { id: "small",  name: "Small Straight",  note: "1-2-3-4-5" },
+  { id: "large",  name: "Large Straight",  note: "2-3-4-5-6" },
+  { id: "full",   name: "Full House" },
+  { id: "chance", name: "Chance" },
+  { id: "yatzy",  name: "Yatzy",           note: "5 of a kind" },
+];
+const UPPER_IDS = CATS.filter(c => c.upper).map(c => c.id);
+const BONUS_TARGET = 63, BONUS = 50;
+const PIPS = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+
+function score(cat, dice) {
+  const counts = [0,0,0,0,0,0,0];
+  dice.forEach(d => counts[d]++);
+  const sum = dice.reduce((a, b) => a + b, 0);
+  const ofKind = n => { for (let f = 6; f >= 1; f--) if (counts[f] >= n) return f * n; return 0; };
+  const sorted = [...dice].sort().join("");
+  const c = CATS.find(x => x.id === cat);
+  if (c.upper) return counts[c.upper] * c.upper;
+  switch (cat) {
+    case "pair": return ofKind(2);
+    case "twoPairs": {
+      const pairs = [];
+      for (let f = 6; f >= 1; f--) if (counts[f] >= 2) pairs.push(f);
+      return pairs.length >= 2 ? (pairs[0] + pairs[1]) * 2 : 0;
+    }
+    case "three": return ofKind(3);
+    case "four": return ofKind(4);
+    case "small": return sorted === "12345" ? 15 : 0;
+    case "large": return sorted === "23456" ? 20 : 0;
+    case "full": return counts.includes(3) && counts.includes(2) ? sum : 0;
+    case "chance": return sum;
+    case "yatzy": return counts.includes(5) ? 50 : 0;
+  }
+  return 0;
+}
+
+// ---------- State ----------
+let playerCount = 2;
+let names = ["Player 1", "Player 2", "Player 3", "Player 4"];
+let players = [], current = 0, dice = [1,1,1,1,1], held = [false,false,false,false,false], rollsLeft = 3;
+
+const $ = id => document.getElementById(id);
+
+// ---------- Setup ----------
+function renderSetup() {
+  $("countBtns").innerHTML = "";
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement("button");
+    b.textContent = n;
+    if (n === playerCount) b.className = "on";
+    b.onclick = () => { playerCount = n; renderSetup(); };
+    $("countBtns").appendChild(b);
+  }
+  $("nameInputs").innerHTML = "";
+  for (let i = 0; i < playerCount; i++) {
+    const inp = document.createElement("input");
+    inp.value = names[i];
+    inp.maxLength = 16;
+    inp.setAttribute("aria-label", "Name of player " + (i + 1));
+    inp.oninput = e => names[i] = e.target.value;
+    $("nameInputs").appendChild(inp);
+  }
+}
+
+function startGame() {
+  players = names.slice(0, playerCount).map((n, i) => ({ name: n.trim() || "Player " + (i + 1), scores: {} }));
+  current = 0;
+  newTurn();
+  show("game");
+}
+
+function show(id) {
+  ["setup", "game", "end"].forEach(s => $(s).classList.toggle("hidden", s !== id));
+}
+
+// ---------- Turn logic ----------
+function newTurn() {
+  held = [false,false,false,false,false];
+  rollsLeft = 3;
+  render();
+}
+
+function roll() {
+  if (rollsLeft === 0) return;
+  dice = dice.map((d, i) => held[i] ? d : 1 + Math.floor(Math.random() * 6));
+  rollsLeft--;
+  render(true);
+}
+
+function toggleHold(i) {
+  if (rollsLeft === 3 || rollsLeft === 0) return;
+  held[i] = !held[i];
+  render();
+}
+
+function pick(cat) {
+  const p = players[current];
+  if (rollsLeft === 3 || p.scores[cat] !== undefined) return;
+  p.scores[cat] = score(cat, dice);
+  if (players.every(pl => Object.keys(pl.scores).length === CATS.length)) return endGame();
+  current = (current + 1) % players.length;
+  newTurn();
+}
+
+function totals(p) {
+  const upper = UPPER_IDS.reduce((a, id) => a + (p.scores[id] || 0), 0);
+  const bonus = upper >= BONUS_TARGET ? BONUS : 0;
+  const all = Object.values(p.scores).reduce((a, b) => a + b, 0) + bonus;
+  return { upper, bonus, all };
+}
+
+// ---------- Render ----------
+function render(animate) {
+  const p = players[current];
+  const round = Object.keys(p.scores).length + 1;
+  $("turnLabel").textContent = p.name + "'s turn";
+  $("subLabel").textContent = "Round " + round + " of 15 · " +
+    (rollsLeft === 3 ? "Roll to start" : rollsLeft + " roll" + (rollsLeft === 1 ? "" : "s") + " left");
+
+  const box = $("dice");
+  box.innerHTML = "";
+  dice.forEach((d, i) => {
+    const el = document.createElement("div");
+    el.className = "die" + (held[i] ? " held" : "") + (rollsLeft === 3 ? " blank" : "") + (animate && !held[i] ? " roll" : "");
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", "Die " + (i + 1) + ": " + d + (held[i] ? ", held" : ""));
+    for (let k = 0; k < 9; k++) {
+      const s = document.createElement("span");
+      if (PIPS[d].includes(k)) s.className = "on";
+      el.appendChild(s);
+    }
+    el.onclick = () => toggleHold(i);
+    box.appendChild(el);
+  });
+
+  $("rollBtn").disabled = rollsLeft === 0;
+  $("rollBtn").textContent = rollsLeft === 3 ? "Roll dice" : rollsLeft === 0 ? "No rolls left" : "Roll again";
+  $("hint").textContent = rollsLeft === 3 ? "Press Roll to begin your turn."
+    : rollsLeft === 0 ? "Choose a box on the scorecard."
+    : "Click dice to hold them, roll again, or choose a box.";
+
+  renderTable();
+}
+
+function renderTable() {
+  const t = $("scoreTable");
+  let html = "<thead><tr><th>Category</th>";
+  players.forEach((p, i) => html += `<th class="${i === current ? "active" : ""}">${escapeHtml(p.name)}</th>`);
+  html += "</tr></thead><tbody>";
+
+  const row = c => {
+    let r = `<tr><td class="cat">${c.name}${c.note ? `<small>${c.note}</small>` : ""}</td>`;
+    players.forEach((p, i) => {
+      const v = p.scores[c.id];
+      const active = i === current ? " active" : "";
+      if (v !== undefined) r += `<td class="filled${active}">${v}</td>`;
+      else if (i === current && rollsLeft < 3) {
+        const s = score(c.id, dice);
+        r += `<td class="pick${s === 0 ? " zero" : ""}${active}" data-cat="${c.id}" title="Score ${s} here">${s}</td>`;
+      } else r += `<td class="${active.trim()}"></td>`;
+    });
+    return r + "</tr>";
+  };
+
+  CATS.filter(c => c.upper).forEach(c => html += row(c));
+  html += `<tr class="sum"><td>Upper sum</td>`;
+  players.forEach(p => html += `<td>${totals(p).upper}</td>`);
+  html += `</tr><tr class="sum"><td>Bonus <small style="font-weight:400;color:var(--muted)">(63+)</small></td>`;
+  players.forEach(p => html += `<td>${totals(p).bonus}</td>`);
+  html += "</tr>";
+  CATS.filter(c => !c.upper).forEach(c => html += row(c));
+  html += `<tr class="total"><td>Total</td>`;
+  players.forEach(p => html += `<td>${totals(p).all}</td>`);
+  html += "</tr></tbody>";
+  t.innerHTML = html;
+  t.querySelectorAll("td.pick").forEach(td => td.onclick = () => pick(td.dataset.cat));
+}
+
+function endGame() {
+  const ranked = players.map(p => ({ name: p.name, total: totals(p).all })).sort((a, b) => b.total - a.total);
+  const top = ranked[0].total;
+  const winners = ranked.filter(r => r.total === top).map(r => r.name);
+  $("winnerLabel").textContent = players.length === 1
+    ? "Final score: " + top
+    : winners.length > 1 ? "It's a tie! " + winners.join(" & ") : "🏆 " + winners[0] + " wins!";
+  $("ranking").innerHTML = ranked.map(r => `<li>${escapeHtml(r.name)} — <b>${r.total}</b></li>`).join("");
+  show("end");
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+}
+
+// ---------- Wire up ----------
+$("startBtn").onclick = startGame;
+$("rollBtn").onclick = roll;
+$("againBtn").onclick = () => { renderSetup(); show("setup"); };
+$("quitBtn").onclick = () => { if (confirm("Start a new game? Current scores will be lost.")) { renderSetup(); show("setup"); } };
+document.addEventListener("keydown", e => {
+  if (!$("game").classList.contains("hidden") && e.code === "Space" && e.target.tagName !== "INPUT") {
+    e.preventDefault(); roll();
+  }
+});
+renderSetup();
+</script>
+</body>
+</html>
