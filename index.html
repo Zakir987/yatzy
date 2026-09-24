@@ -134,6 +134,26 @@
   tr.sum td { font-weight: 700; background: transparent !important; }
   tr.total td { font-size: 1.05rem; font-weight: 800; border-top: 2px solid var(--ink); background: transparent !important; }
 
+  /* Settings */
+  .sgrid { display: grid; grid-template-columns: 1fr; gap: 12px 20px; }
+  @media (min-width: 700px) { .sgrid { grid-template-columns: 1fr 1fr; } }
+  .sgrid .field { display: flex; flex-direction: column; gap: 5px; }
+  .sgrid .field > span { font-weight: 600; font-size: .92rem; }
+  .sgrid .inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .9rem; }
+  .sgrid select, .sgrid input[type=number] { font: inherit; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .sgrid input[type=number] { width: 78px; }
+  .sgrid select { flex: 1; min-width: 180px; }
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .presets button { font-size: .88rem; padding: 6px 12px; }
+  .ro .sgrid select, .ro .sgrid input { pointer-events: none; opacity: .75; }
+  .swatch { width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 2px solid var(--line); }
+  .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .tray.c-ruby { --die: #c8323c; --die-edge: #9e1f29; --pip: #ffffff; }
+  .tray.c-sapphire { --die: #2458b8; --die-edge: #183f88; --pip: #ffffff; }
+  .tray.c-onyx { --die: #23262b; --die-edge: #0f1114; --pip: #f3efe6; }
+  .tray.c-gold { --die: #e7b53c; --die-edge: #b88a1d; --pip: #2a1f05; }
+  .tray.c-jade { --die: #cfeee0; --die-edge: #9ccfb8; --pip: #0f4a37; }
+
   .endbox { text-align: center; }
   .endbox ol { text-align: left; display: inline-block; margin: 8px 0 14px; }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: .92rem; max-width: 90vw; z-index: 10; }
@@ -173,10 +193,18 @@
         <button id="localBtn">Start local game</button>
       </div>
     </div>
+    <details class="card" style="margin-top:16px" id="localRules">
+      <summary><b>Game rules for local games</b> <span class="muted">(online rooms are set up in the lobby)</span></summary>
+      <div id="localSettings" style="margin-top:12px"></div>
+    </details>
+    <div class="card" style="margin-top:16px">
+      <label class="lbl" for="diceColor">Dice colour <span class="muted" style="font-weight:400">(only on your screen)</span></label>
+      <div class="row" id="diceColors"></div>
+    </div>
     <details class="card" style="margin-top:16px">
       <summary><b>How to play</b></summary>
-      <p>On your turn, roll up to 3 times. Between rolls, click a die to hold it. Then pick one empty box on the scorecard (you can take 0). 15 rounds, highest total wins.</p>
-      <p class="muted"><b>Ones–Sixes:</b> sum of that number · <b>Bonus:</b> 50 if Ones–Sixes ≥ 63 · <b>Pair / Two Pairs / 3 &amp; 4 of a Kind:</b> sum of matching dice · <b>Small Straight</b> 1-2-3-4-5 = 15 · <b>Large Straight</b> 2-3-4-5-6 = 20 · <b>Full House</b> 3+2 = sum of all dice · <b>Chance</b> = sum · <b>Yatzy</b> = 50.</p>
+      <p>On your turn, roll up to 3 times (you can change this). Between rolls, click a die to hold it. Then pick one empty box on the scorecard (you can take 0). 15 rounds, highest total wins.</p>
+      <p class="muted"><b>Ones–Sixes:</b> sum of that number · <b>Upper bonus</b> if Ones–Sixes reach the target · <b>Pair / Two Pairs / 3 &amp; 4 of a Kind:</b> sum of matching dice · <b>Small Straight:</b> any 4 in a row (1-2-3-4, 2-3-4-5 or 3-4-5-6) · <b>Large Straight:</b> any 5 in a row (1-2-3-4-5 or 2-3-4-5-6) · <b>Full House:</b> 3 of one + 2 of another · <b>Chance</b> = sum · <b>Yatzy</b> = 5 of a kind. All points, the bonus, and the straight rules can be changed under Game rules.</p>
     </details>
   </section>
 
@@ -204,6 +232,11 @@
           <button id="leaveBtn1">Leave</button>
         </div>
       </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Game rules</h2>
+      <p class="muted" id="lobbyRulesNote"></p>
+      <div id="lobbySettings"></div>
     </div>
   </section>
 
@@ -254,12 +287,44 @@ const FACE_ROT = { 1:[0,0], 6:[0,180], 3:[0,-90], 4:[0,90], 5:[-90,0], 2:[90,0] 
 const MAX_PLAYERS = 6;
 const PEER_PREFIX = "yatzy-zhp-";
 
-function score(cat, dice) {
+// ---------- Customisable rules ----------
+const DEFAULT_SETTINGS = {
+  rolls: 3, bonusTarget: 63, bonusPoints: 50,
+  smallMode: "flex", smallPoints: 15, largeMode: "flex", largePoints: 20,
+  fullMode: "sum", fullPoints: 25, yatzyPoints: 50, extraYatzy: 0,
+};
+const PRESETS = {
+  "Flexible (default)": { ...DEFAULT_SETTINGS },
+  "Classic Yatzy": { rolls: 3, bonusTarget: 63, bonusPoints: 50, smallMode: "fixed", smallPoints: 15, largeMode: "fixed", largePoints: 20, fullMode: "sum", fullPoints: 25, yatzyPoints: 50, extraYatzy: 0 },
+  "Yahtzee style": { rolls: 3, bonusTarget: 63, bonusPoints: 35, smallMode: "flex", smallPoints: 30, largeMode: "flex", largePoints: 40, fullMode: "fixed", fullPoints: 25, yatzyPoints: 50, extraYatzy: 100 },
+};
+const SETTING_LIMITS = { rolls: [1, 5], bonusTarget: [0, 105], bonusPoints: [0, 500], smallPoints: [0, 500], largePoints: [0, 500], fullPoints: [0, 500], yatzyPoints: [0, 500], extraYatzy: [0, 500] };
+function cleanSettings(x) {
+  const s = { ...DEFAULT_SETTINGS };
+  if (!x || typeof x !== "object") return s;
+  for (const k in SETTING_LIMITS) {
+    const v = Math.round(Number(x[k]));
+    if (Number.isFinite(v)) s[k] = Math.min(SETTING_LIMITS[k][1], Math.max(SETTING_LIMITS[k][0], v));
+  }
+  for (const k of ["smallMode", "largeMode"]) if (x[k] === "flex" || x[k] === "fixed") s[k] = x[k];
+  if (x.fullMode === "sum" || x.fullMode === "fixed") s.fullMode = x.fullMode;
+  return s;
+}
+function catNote(c, S) {
+  if (c.id === "small") return (S.smallMode === "flex" ? "any 4 in a row" : "1-2-3-4-5") + " · " + S.smallPoints;
+  if (c.id === "large") return (S.largeMode === "flex" ? "any 5 in a row" : "2-3-4-5-6") + " · " + S.largePoints;
+  if (c.id === "full") return S.fullMode === "sum" ? "3 + 2 · sum" : "3 + 2 · " + S.fullPoints;
+  if (c.id === "yatzy") return "5 of a kind · " + S.yatzyPoints;
+  return "";
+}
+const runOf = (counts, from, len) => { for (let f = from; f < from + len; f++) if (!counts[f]) return false; return true; };
+
+function score(cat, dice, S) {
+  S = S || DEFAULT_SETTINGS;
   const counts = [0,0,0,0,0,0,0];
   dice.forEach(d => counts[d]++);
   const sum = dice.reduce((a, b) => a + b, 0);
   const ofKind = n => { for (let f = 6; f >= 1; f--) if (counts[f] >= n) return f * n; return 0; };
-  const sorted = [...dice].sort().join("");
   const c = CATS.find(x => x.id === cat);
   if (c.upper) return counts[c.upper] * c.upper;
   switch (cat) {
@@ -267,18 +332,26 @@ function score(cat, dice) {
     case "twoPairs": { const p = []; for (let f = 6; f >= 1; f--) if (counts[f] >= 2) p.push(f); return p.length >= 2 ? (p[0] + p[1]) * 2 : 0; }
     case "three": return ofKind(3);
     case "four": return ofKind(4);
-    case "small": return sorted === "12345" ? 15 : 0;
-    case "large": return sorted === "23456" ? 20 : 0;
-    case "full": return counts.includes(3) && counts.includes(2) ? sum : 0;
+    case "small": {
+      const ok = S.smallMode === "flex" ? (runOf(counts, 1, 4) || runOf(counts, 2, 4) || runOf(counts, 3, 4)) : runOf(counts, 1, 5);
+      return ok ? S.smallPoints : 0;
+    }
+    case "large": {
+      const ok = S.largeMode === "flex" ? (runOf(counts, 1, 5) || runOf(counts, 2, 5)) : runOf(counts, 2, 5);
+      return ok ? S.largePoints : 0;
+    }
+    case "full": return counts.includes(3) && counts.includes(2) ? (S.fullMode === "sum" ? sum : S.fullPoints) : 0;
     case "chance": return sum;
-    case "yatzy": return counts.includes(5) ? 50 : 0;
+    case "yatzy": return counts.includes(5) ? S.yatzyPoints : 0;
   }
   return 0;
 }
-function totals(p) {
+function totals(p, S) {
+  S = S || DEFAULT_SETTINGS;
   const upper = UPPER_IDS.reduce((a, id) => a + (p.scores[id] || 0), 0);
-  const bonus = upper >= 63 ? 50 : 0;
-  return { upper, bonus, all: Object.values(p.scores).reduce((a, b) => a + b, 0) + bonus };
+  const bonus = upper >= S.bonusTarget ? S.bonusPoints : 0;
+  const extra = p.extra || 0;
+  return { upper, bonus, extra, all: Object.values(p.scores).reduce((a, b) => a + b, 0) + bonus + extra };
 }
 const filled = p => Object.keys(p.scores).length;
 
@@ -302,13 +375,14 @@ function show(id) { ["home", "lobby", "game"].forEach(s => $(s).classList.toggle
 let role = null, state = null, peer = null, hostConn = null, roomCode = null;
 const conns = new Map(); // host: clientId -> DataConnection
 
-function freshState(mode) {
-  return { mode, phase: "lobby", players: [], current: 0, dice: [1,2,3,4,5], held: [false,false,false,false,false], rollsLeft: 3, rollSeq: 0, log: "", lastPick: null };
+function freshState(mode, settings) {
+  const S = cleanSettings(settings);
+  return { mode, settings: S, phase: "lobby", players: [], current: 0, dice: [1,2,3,4,5], held: [false,false,false,false,false], rollsLeft: S.rolls, rollSeq: 0, log: "", lastPick: null };
 }
 
 // ---------- Host / local authority ----------
 function nextTurn(s) {
-  s.held = [false,false,false,false,false]; s.rollsLeft = 3;
+  s.held = [false,false,false,false,false]; s.rollsLeft = s.settings.rolls;
   const n = s.players.length;
   for (let k = 1; k <= n; k++) {
     const i = (s.current + k) % n, p = s.players[i];
@@ -317,7 +391,7 @@ function nextTurn(s) {
   if (s.players.some(p => p.online)) s.phase = "ended";
 }
 function startGame(s) {
-  s.players.forEach(p => p.scores = {});
+  s.players.forEach(p => { p.scores = {}; p.extra = 0; });
   s.phase = "playing"; s.log = "Game started. Good luck!"; s.lastPick = null;
   s.current = s.players.length - 1; nextTurn(s);
 }
@@ -325,16 +399,20 @@ function apply(actorId, a) {
   const s = state;
   if (!a || typeof a !== "object") return;
   if (a.type === "start") { if (actorId === hostId() && s.players.length && s.phase !== "playing") startGame(s); return commit(); }
+  if (a.type === "settings") { if (actorId === hostId() && s.phase !== "playing") { s.settings = cleanSettings(a.settings); s.rollsLeft = s.settings.rolls; } return commit(); }
+  const S = s.settings, rolled = s.rollsLeft < S.rolls;
   if (s.phase !== "playing") return;
   const p = s.players[s.current];
   if (s.mode !== "local" && p.id !== actorId) return;
   if (a.type === "roll" && s.rollsLeft > 0) {
     s.dice = s.dice.map((d, i) => s.held[i] ? d : 1 + Math.floor(Math.random() * 6));
     s.rollsLeft--; s.rollSeq++;
-  } else if (a.type === "hold" && Number.isInteger(a.i) && a.i >= 0 && a.i < 5 && s.rollsLeft > 0 && s.rollsLeft < 3) {
+  } else if (a.type === "hold" && Number.isInteger(a.i) && a.i >= 0 && a.i < 5 && s.rollsLeft > 0 && rolled) {
     s.held[a.i] = !s.held[a.i];
-  } else if (a.type === "pick" && CAT_IDS.includes(a.cat) && s.rollsLeft < 3 && p.scores[a.cat] === undefined) {
-    const v = score(a.cat, s.dice);
+  } else if (a.type === "pick" && CAT_IDS.includes(a.cat) && rolled && p.scores[a.cat] === undefined) {
+    const v = score(a.cat, s.dice, S);
+    const isYatzy = s.dice.every(d => d === s.dice[0]);
+    if (isYatzy && S.extraYatzy > 0 && a.cat !== "yatzy" && p.scores.yatzy > 0) p.extra = (p.extra || 0) + S.extraYatzy;
     p.scores[a.cat] = v;
     s.log = p.name + " scored " + v + " in " + CATS.find(c => c.id === a.cat).name + ".";
     s.lastPick = { pid: p.id, cat: a.cat, t: Date.now() };
@@ -371,7 +449,7 @@ function renderLocalSetup() {
   }
 }
 function startLocal() {
-  role = "local"; state = freshState("local");
+  role = "local"; state = freshState("local", localSettings);
   state.players = localNames.slice(0, localCount).map((n, i) => ({ id: "p" + i, name: cleanName(n), scores: {}, online: true }));
   startGame(state); resetDiceView(); show("game"); render();
 }
@@ -385,7 +463,7 @@ function createRoom(attempt = 0) {
   $("createBtn").disabled = true; $("createBtn").textContent = "Creating room…";
   peer = new Peer(PEER_PREFIX + roomCode, { debug: 0 });
   peer.on("open", () => {
-    role = "host"; state = freshState("online");
+    role = "host"; state = freshState("online", localSettings);
     state.players.push({ id: myId, name, scores: {}, online: true });
     $("createBtn").disabled = false; $("createBtn").textContent = "Create a game room";
     history.replaceState(null, "", "?room=" + roomCode);
@@ -479,6 +557,8 @@ function leave(silent) {
   conns.forEach(c => { try { c.close(); } catch (e) {} }); conns.clear();
   try { if (peer) peer.destroy(); } catch (e) {}
   peer = null; hostConn = null; role = null; state = null;
+  delete $("lobbySettings").dataset.ready;
+  renderSettings($("localSettings"), localSettings, true, saveLocalSettings);
   history.replaceState(null, "", location.pathname);
   show("home");
 }
@@ -532,16 +612,16 @@ function render() {
   s.dice.forEach((d, i) => {
     setCube(i, d, animate && !s.held[i]);
     slots[i].classList.toggle("held", !!s.held[i]);
-    slots[i].style.cursor = mine && s.rollsLeft > 0 && s.rollsLeft < 3 ? "pointer" : "default";
+    slots[i].style.cursor = mine && s.rollsLeft > 0 && s.rollsLeft < s.settings.rolls ? "pointer" : "default";
     slots[i].setAttribute("aria-label", "Die " + (i + 1) + ": " + d + (s.held[i] ? ", held" : ""));
   });
   shownSeq = s.rollSeq;
-  $("tray").classList.toggle("idle", s.rollsLeft === 3 || ended);
+  $("tray").classList.toggle("idle", s.rollsLeft === s.settings.rolls || ended);
 
   // Status
   const rb = $("rollBtn");
   rb.disabled = ended || !mine || s.rollsLeft === 0;
-  rb.firstChild.nodeValue = s.rollsLeft === 3 ? "ROLL" : s.rollsLeft === 0 ? "PICK" : "ROLL";
+  rb.firstChild.nodeValue = s.rollsLeft === s.settings.rolls ? "ROLL" : s.rollsLeft === 0 ? "PICK" : "ROLL";
   $("rollsSmall").textContent = ended ? "" : s.rollsLeft + " left";
   if (ended) { $("turnLabel").textContent = "Game over"; $("turnLabel").className = "turn"; $("subLabel").textContent = ""; }
   else {
@@ -550,7 +630,7 @@ function render() {
     $("subLabel").textContent = "Round " + (filled(p) + 1) + " of 15" + (roomCode && s.mode !== "local" ? " · Room " + roomCode : "");
   }
   $("hint").textContent = ended ? "" : !mine ? "Watching " + p.name + " play…"
-    : s.rollsLeft === 3 ? "Press ROLL to start your turn."
+    : s.rollsLeft === s.settings.rolls ? "Press ROLL to start your turn."
     : s.rollsLeft === 0 ? "Choose a box on the scorecard."
     : "Tap dice to hold them, roll again, or choose a box.";
   $("log").textContent = s.log || "";
@@ -562,7 +642,7 @@ function render() {
   // End box
   $("endBox").classList.toggle("hidden", !ended);
   if (ended) {
-    const ranked = s.players.map(pl => ({ name: pl.name, total: totals(pl).all })).sort((a, b) => b.total - a.total);
+    const ranked = s.players.map(pl => ({ name: pl.name, total: totals(pl, s.settings).all })).sort((a, b) => b.total - a.total);
     const top = ranked[0].total, winners = ranked.filter(r => r.total === top).map(r => r.name);
     $("winnerLabel").textContent = s.players.length === 1 ? "Final score: " + top : winners.length > 1 ? "It's a tie! " + winners.join(" & ") : "🏆 " + winners[0] + " wins!";
     $("ranking").innerHTML = ranked.map(r => `<li>${esc(r.name)} — <b>${r.total}</b></li>`).join("");
@@ -582,23 +662,25 @@ function renderTable(hidePreview) {
   });
   h += "</tr></thead><tbody>";
   const row = c => {
-    let r = `<tr><td class="cat">${c.name}${c.note ? `<small>${c.note}</small>` : ""}</td>`;
+    const note = catNote(c, s.settings);
+    let r = `<tr><td class="cat">${c.name}${note ? `<small>${note}</small>` : ""}</td>`;
     s.players.forEach((p, i) => {
       const v = p.scores[c.id], active = playing && i === s.current ? " active" : "";
       const just = s.lastPick && s.lastPick.pid === p.id && s.lastPick.cat === c.id && Date.now() - s.lastPick.t < 3000 && !hidePreview ? " just" : "";
       if (v !== undefined) r += `<td class="filled${active}${just}">${v}</td>`;
-      else if (playing && i === s.current && s.rollsLeft < 3 && !hidePreview) {
-        const sc = score(c.id, s.dice);
+      else if (playing && i === s.current && s.rollsLeft < s.settings.rolls && !hidePreview) {
+        const sc = score(c.id, s.dice, s.settings);
         r += `<td class="pick${mine ? " can" : ""}${sc === 0 ? " zero" : ""}${active}" data-cat="${c.id}">${sc}</td>`;
       } else r += `<td class="${active.trim()}"></td>`;
     });
     return r + "</tr>";
   };
   CATS.filter(c => c.upper).forEach(c => h += row(c));
-  h += `<tr class="sum"><td>Upper sum</td>` + s.players.map(p => `<td>${totals(p).upper}</td>`).join("") + "</tr>";
-  h += `<tr class="sum"><td>Bonus <small style="font-weight:400;color:var(--muted)">(63+)</small></td>` + s.players.map(p => `<td>${totals(p).bonus}</td>`).join("") + "</tr>";
+  h += `<tr class="sum"><td>Upper sum</td>` + s.players.map(p => `<td>${totals(p, s.settings).upper}</td>`).join("") + "</tr>";
+  h += `<tr class="sum"><td>Bonus <small style="font-weight:400;color:var(--muted)">(${s.settings.bonusTarget}+ → ${s.settings.bonusPoints})</small></td>` + s.players.map(p => `<td>${totals(p, s.settings).bonus}</td>`).join("") + "</tr>";
   CATS.filter(c => !c.upper).forEach(c => h += row(c));
-  h += `<tr class="total"><td>Total</td>` + s.players.map(p => `<td>${totals(p).all}</td>`).join("") + "</tr></tbody>";
+  if (s.settings.extraYatzy > 0) h += `<tr class="sum"><td>Extra Yatzy bonus <small style="font-weight:400;color:var(--muted)">(+${s.settings.extraYatzy} each)</small></td>` + s.players.map(p => `<td>${p.extra || 0}</td>`).join("") + "</tr>";
+  h += `<tr class="total"><td>Total</td>` + s.players.map(p => `<td>${totals(p, s.settings).all}</td>`).join("") + "</tr></tbody>";
   const t = $("scoreTable"); t.innerHTML = h;
   if (mine) t.querySelectorAll("td.pick.can").forEach(td => td.onclick = () => send({ type: "pick", cat: td.dataset.cat }));
 }
@@ -611,11 +693,56 @@ function renderLobby() {
   $("shareLink").value = location.origin + location.pathname + "?room=" + roomCode;
   $("lobbyPlayers").innerHTML = state.players.map((p, i) =>
     `<li><span class="dot"></span>${esc(p.name)} ${i === 0 ? '<span class="tag">host</span>' : ""}${p.id === myId ? '<span class="tag">you</span>' : ""}</li>`).join("");
+  const box = $("lobbySettings");
+  $("lobbyRulesNote").textContent = isHost ? "Choose the rules before starting. Everyone in the room plays by these." : "The host picks the rules. They'll update here live.";
+  if (!isHost) renderSettings(box, state.settings, false);
+  else if (!box.dataset.ready) {
+    box.dataset.ready = "1";
+    renderSettings(box, state.settings, true, S => { saveLocalSettings(S); send({ type: "settings", settings: S }); });
+  }
   $("startBtn").classList.toggle("hidden", !isHost);
   $("startBtn").textContent = state.players.length > 1 ? "Start game (" + state.players.length + " players)" : "Start game";
 }
 
+// ================= Settings UI =================
+const prefs = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+};
+let localSettings = (() => { try { return cleanSettings(JSON.parse(prefs.get("yatzySettings") || "null")); } catch (e) { return cleanSettings(null); } })();
+function saveLocalSettings(S) { localSettings = cleanSettings(S); prefs.set("yatzySettings", JSON.stringify(localSettings)); }
+
+function renderSettings(box, S, editable, onChange) {
+  const num = (k, label) => `<input type="number" data-k="${k}" min="${SETTING_LIMITS[k][0]}" max="${SETTING_LIMITS[k][1]}" value="${S[k]}" aria-label="${label}">`;
+  const sel = (k, opts, label) => `<select data-k="${k}" aria-label="${label}">` + opts.map(([v, t]) => `<option value="${v}"${String(S[k]) === String(v) ? " selected" : ""}>${t}</option>`).join("") + "</select>";
+  box.classList.toggle("ro", !editable);
+  box.innerHTML =
+    (editable ? `<div class="presets">` + Object.keys(PRESETS).map(n => `<button type="button" data-preset="${n}">${n}</button>`).join("") + `</div>` : "") +
+    `<div class="sgrid">
+      <label class="field"><span>Rolls per turn</span><div class="inline">${sel("rolls", [1,2,3,4,5].map(n => [n, n + (n === 1 ? " roll" : " rolls")]), "Rolls per turn")}</div></label>
+      <div class="field"><span>Upper section bonus</span><div class="inline">Ones–Sixes total of ${num("bonusTarget", "Bonus target")} or more gives ${num("bonusPoints", "Bonus points")} points</div></div>
+      <div class="field"><span>Small Straight</span><div class="inline">${sel("smallMode", [["flex", "Any 4 in a row (1-2-3-4, 2-3-4-5, 3-4-5-6)"], ["fixed", "Only 1-2-3-4-5"]], "Small straight rule")} ${num("smallPoints", "Small straight points")} pts</div></div>
+      <div class="field"><span>Large Straight</span><div class="inline">${sel("largeMode", [["flex", "Any 5 in a row (1-2-3-4-5 or 2-3-4-5-6)"], ["fixed", "Only 2-3-4-5-6"]], "Large straight rule")} ${num("largePoints", "Large straight points")} pts</div></div>
+      <div class="field"><span>Full House</span><div class="inline">${sel("fullMode", [["sum", "Sum of all dice"], ["fixed", "Fixed points"]], "Full house scoring")} <span class="${S.fullMode === "sum" ? "hidden" : ""}">${num("fullPoints", "Full house points")} pts</span></div></div>
+      <div class="field"><span>Yatzy (5 of a kind)</span><div class="inline">${num("yatzyPoints", "Yatzy points")} pts</div></div>
+      <div class="field"><span>Extra Yatzy bonus</span><div class="inline">${num("extraYatzy", "Extra Yatzy bonus")} pts for each extra Yatzy after the first (0 = off)</div></div>
+    </div>`;
+  if (!editable) return;
+  const read = () => { const o = { ...S }; box.querySelectorAll("[data-k]").forEach(el => o[el.dataset.k] = el.value); return cleanSettings(o); };
+  box.querySelectorAll("[data-k]").forEach(el => el.addEventListener("change", () => { const n = read(); onChange(n); renderSettings(box, n, true, onChange); }));
+  box.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => { const n = cleanSettings(PRESETS[b.dataset.preset]); onChange(n); renderSettings(box, n, true, onChange); });
+}
+
+const DICE_COLORS = [["classic", "#fffdf8"], ["ruby", "#c8323c"], ["sapphire", "#2458b8"], ["onyx", "#23262b"], ["gold", "#e7b53c"], ["jade", "#cfeee0"]];
+function applyDiceColor(name) {
+  DICE_COLORS.forEach(([n]) => $("tray").classList.toggle("c-" + n, n === name && n !== "classic"));
+  $("diceColors").innerHTML = DICE_COLORS.map(([n, c]) => `<button type="button" class="swatch${n === name ? " on" : ""}" style="background:${c}" title="${n}" aria-label="${n} dice" data-c="${n}"></button>`).join("");
+  $("diceColors").querySelectorAll("[data-c]").forEach(b => b.onclick = () => { prefs.set("yatzyDice", b.dataset.c); applyDiceColor(b.dataset.c); });
+}
+
 // ================= Wire up =================
+renderSettings($("localSettings"), localSettings, true, saveLocalSettings);
+applyDiceColor(prefs.get("yatzyDice") || "classic");
 buildTray();
 renderLocalSetup();
 $("myName").value = store.get("yatzyName") || "";
